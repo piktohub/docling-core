@@ -13,7 +13,7 @@ from typing_extensions import Self
 
 try:
     import semchunk
-    from transformers import AutoTokenizer, PreTrainedTokenizerBase
+    from transformers import PreTrainedTokenizerBase
 except ImportError:
     raise RuntimeError(
         "Module requires 'chunking' extra; to install, run: "
@@ -55,6 +55,7 @@ class HybridChunker(BaseChunker):
 
     @model_validator(mode="after")
     def _patch_tokenizer_and_max_tokens(self) -> Self:
+        from transformers import AutoTokenizer
         self._tokenizer = (
             self.tokenizer
             if isinstance(self.tokenizer, PreTrainedTokenizerBase)
