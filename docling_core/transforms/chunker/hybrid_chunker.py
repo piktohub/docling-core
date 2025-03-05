@@ -20,7 +20,8 @@ except ImportError:
         "`pip install 'docling-core[chunking]'`"
     )
 
-from docling_core.transforms.chunker import (
+from docling_core.types.doc.labels import DocItemLabel
+from docling_core.transforms.chunker.hierarchical_chunker import (
     BaseChunk,
     BaseChunker,
     DocChunk,
@@ -60,9 +61,7 @@ class HybridChunker(BaseChunker):
             else AutoTokenizer.from_pretrained(self.tokenizer)
         )
         if self.max_tokens is None:
-            self.max_tokens = TypeAdapter(PositiveInt).validate_python(
-                self._tokenizer.model_max_length
-            )
+            self.max_tokens = float('inf')
         return self
 
     def _count_text_tokens(self, text: Optional[Union[str, list[str]]]):
@@ -162,25 +161,7 @@ class HybridChunker(BaseChunker):
         self,
         doc_chunk: DocChunk,
     ) -> list[DocChunk]:
-        lengths = self._doc_chunk_length(doc_chunk)
-        if lengths.total_len <= self.max_tokens:
-            return [DocChunk(**doc_chunk.export_json_dict())]
-        else:
-            # How much room is there for text after subtracting out the headers and
-            # captions:
-            available_length = self.max_tokens - lengths.other_len
-            sem_chunker = semchunk.chunkerify(
-                self._tokenizer, chunk_size=available_length
-            )
-            if available_length <= 0:
-                warnings.warn(
-                    f"Headers and captions for this chunk are longer than the total amount of size for the chunk, chunk will be ignored: {doc_chunk.text=}"  # noqa
-                )
-                return []
-            text = doc_chunk.text
-            segments = sem_chunker.chunk(text)
-            chunks = [DocChunk(text=s, meta=doc_chunk.meta) for s in segments]
-            return chunks
+        return [doc_chunk]
 
     def _merge_chunks_with_matching_metadata(self, chunks: list[DocChunk]):
         output_chunks = []
@@ -189,8 +170,24 @@ class HybridChunker(BaseChunker):
         num_chunks = len(chunks)
         while window_end < num_chunks:
             chunk = chunks[window_end]
+            next_chunk = chunks[window_end + 1] if window_end + 1 < num_chunks else None
             headings_and_captions = (chunk.meta.headings, chunk.meta.captions)
             ready_to_append = False
+            is_picture = False
+            is_table = False
+            is_list_item = False
+
+            for doc_item in chunk.meta.doc_items:
+                if doc_item.label == DocItemLabel.TABLE: is_table = True
+                if doc_item.label == DocItemLabel.PICTURE: is_picture = True
+                if doc_item.label == DocItemLabel.LIST_ITEM: is_list_item = True
+
+            if next_chunk is not None:
+                for doc_item in next_chunk.meta.doc_items:
+                    if doc_item.label == DocItemLabel.TABLE: is_table = True
+                    if doc_item.label == DocItemLabel.PICTURE: is_picture = True
+                    if doc_item.label == DocItemLabel.LIST_ITEM: is_list_item = True
+
             if window_start == window_end:
                 current_headings_and_captions = headings_and_captions
                 window_end += 1
@@ -217,6 +214,10 @@ class HybridChunker(BaseChunker):
                     new_chunk = candidate
                 else:
                     ready_to_append = True
+
+            if is_picture or is_table or is_list_item:
+                ready_to_append = True
+
             if ready_to_append or window_end == num_chunks:
                 # no more room OR the start of new metadata.  Either way, end the block
                 # and use the current window_end as the start of a new block
