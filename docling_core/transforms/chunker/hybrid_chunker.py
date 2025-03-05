@@ -13,7 +13,6 @@ from typing_extensions import Self
 
 try:
     import semchunk
-    from transformers import AutoTokenizer, PreTrainedTokenizerBase
 except ImportError:
     raise RuntimeError(
         "Module requires 'chunking' extra; to install, run: "
@@ -45,9 +44,7 @@ class HybridChunker(BaseChunker):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    tokenizer: Union[PreTrainedTokenizerBase, str] = (
-        "sentence-transformers/all-MiniLM-L6-v2"
-    )
+    tokenizer: str = "sentence-transformers/all-MiniLM-L6-v2"
     max_tokens: int = None  # type: ignore[assignment]
     merge_peers: bool = True
 
@@ -55,6 +52,10 @@ class HybridChunker(BaseChunker):
 
     @model_validator(mode="after")
     def _patch_tokenizer_and_max_tokens(self) -> Self:
+        print("hybrid_chunker.py: transformer import start")
+        from transformers import AutoTokenizer, PreTrainedTokenizerBase
+        print("hybrid_chunker.py: transformer import done")
+
         self._tokenizer = (
             self.tokenizer
             if isinstance(self.tokenizer, PreTrainedTokenizerBase)
@@ -80,8 +81,10 @@ class HybridChunker(BaseChunker):
         other_len: int
 
     def _count_chunk_tokens(self, doc_chunk: DocChunk):
-        ser_txt = self.serialize(chunk=doc_chunk)
-        return len(self._tokenizer.tokenize(text=ser_txt))
+        # Because we set self.max_token = float('inf').
+        # It is pointless for us to compare the token and tokenize it.
+        # As any number will be less than infinity.
+        return 0
 
     def _doc_chunk_length(self, doc_chunk: DocChunk):
         text_length = self._count_text_tokens(doc_chunk.text)
