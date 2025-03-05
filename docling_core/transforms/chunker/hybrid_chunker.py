@@ -13,7 +13,6 @@ from typing_extensions import Self
 
 try:
     import semchunk
-    from transformers import PreTrainedTokenizerBase
 except ImportError:
     raise RuntimeError(
         "Module requires 'chunking' extra; to install, run: "
@@ -33,6 +32,7 @@ from docling_core.types.doc.document import TextItem
 
 
 class HybridChunker(BaseChunker):
+    from transformers import PreTrainedTokenizerBase
     r"""Chunker doing tokenization-aware refinements on top of document layout chunking.
 
     Args:
