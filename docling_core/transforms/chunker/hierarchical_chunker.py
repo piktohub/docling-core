@@ -309,6 +309,8 @@ class HierarchicalChunker(BaseChunker):
         return self._is_bbox_match(item_prov, current_item_prov)
 
     def _picture_item_existed(self, current_picture_item: PictureItem, picture_items: list[PictureItem]):
+        if current_picture_item.image is None: return False
+
         # Here, we will compare ImageData, and return true if found.
         # But when imageData is blank, we will compare the:
         # 1. BoundingBox (Ideally they are the same when a page is duplicated)
