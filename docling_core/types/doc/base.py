@@ -329,11 +329,13 @@ class BoundingBox(BaseModel):
         self, elem_i: "BoundingBox", elem_j: "BoundingBox"
     ) -> bool:
         """is_horizontally_connected."""
+        print("Starting.. is_horizontally_connected")
         if (
             self.coord_origin == CoordOrigin.BOTTOMLEFT
             and elem_i.coord_origin == CoordOrigin.BOTTOMLEFT
             and elem_j.coord_origin == CoordOrigin.BOTTOMLEFT
         ):
+            print("Entering.. if")
             min_ij = min(elem_i.b, elem_j.b)
             max_ij = max(elem_i.t, elem_j.t)
 
@@ -350,6 +352,7 @@ class BoundingBox(BaseModel):
             and elem_i.coord_origin == CoordOrigin.TOPLEFT
             and elem_j.coord_origin == CoordOrigin.TOPLEFT
         ):
+            print("Entering.. elif")
             min_ij = min(elem_i.t, elem_j.t)
             max_ij = max(elem_i.b, elem_j.b)
 
@@ -362,8 +365,10 @@ class BoundingBox(BaseModel):
             return False
 
         else:
+            print("Entering.. else")
             raise ValueError("BoundingBoxes have different CoordOrigin")
 
+        print("Done..")
         return False
 
     @classmethod
