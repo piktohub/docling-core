@@ -29,6 +29,7 @@ from docling_core.search.package import VERSION_PATTERN
 from docling_core.transforms.chunker import BaseChunk, BaseChunker, BaseMeta
 from docling_core.types import DoclingDocument as DLDocument
 from docling_core.types.doc.base import ImageRefMode
+from docling_core.types.doc.labels import DocItemLabel
 from docling_core.types.doc.document import (
     DocItem,
     DoclingDocument,
@@ -40,6 +41,9 @@ from docling_core.types.doc.document import (
     TableItem,
     TitleItem,
     UnorderedList,
+    TextItem,
+    PictureItem,
+    ListItem,
 )
 
 _VERSION: Final = "1.0.0"
@@ -224,10 +228,24 @@ class HierarchicalChunker(BaseChunker):
         """
         my_doc_ser = self.serializer_provider.get_serializer(doc=dl_doc)
         heading_by_level: dict[LevelNumber, str] = {}
+        prev_heading_by_level: dict[LevelNumber, str] = {}
         visited: set[str] = set()
         ser_res = create_ser_result()
         excluded_refs = my_doc_ser.get_excluded_refs(**kwargs)
+        duplicated_picture_items: list[PictureItem] = []
+        duplicated_section_header_items: list[SectionHeaderItem] = []
+        duplicated_text_items: list[TextItem] = []
+        for item in self._get_duplicated_items(dl_doc):
+            if isinstance(item, PictureItem):
+                duplicated_picture_items.append(item)
+            elif isinstance(item, SectionHeaderItem):
+                duplicated_section_header_items.append(item)
+            elif isinstance(item, TextItem):
+                duplicated_text_items.append(item)
+         # To detect if picture item existed before skipping. Only once per same image
+        picture_items: list[PictureItem] = []
         for item, level in dl_doc.iterate_items(with_groups=True):
+            item = self._cleaned_item(item)
             if item.self_ref in excluded_refs:
                 continue
             if isinstance(item, (TitleItem, SectionHeaderItem)):
@@ -260,3 +278,105 @@ class HierarchicalChunker(BaseChunker):
                     ),
                 )
                 yield c
+
+    def _is_bbox_match(self, prov_item, current_prov_item):
+        return (
+            int(prov_item.bbox.l) == int(current_prov_item.bbox.l)
+        ) and (
+            int(prov_item.bbox.t) == int(current_prov_item.bbox.t)
+        ) and (
+            int(prov_item.bbox.r) == int(current_prov_item.bbox.r)
+        ) and (
+            int(prov_item.bbox.b) == int(current_prov_item.bbox.b)
+        )
+
+    def _is_same_location(self, current_item, item):
+        if item.prov == [] or current_item.prov == []:
+            return False
+
+        item_prov = item.prov[0]
+        current_item_prov = current_item.prov[0]
+
+        return self._is_bbox_match(item_prov, current_item_prov)
+
+    def _picture_item_existed(self, current_picture_item: PictureItem, picture_items: list[PictureItem]):
+        if current_picture_item.image is None: return False
+        # Here, we will compare ImageData, and return true if found.
+        # But when imageData is blank, we will compare the:
+        # 1. BoundingBox (Ideally they are the same when a page is duplicated)
+        picture_item_found = False
+        for picture_item in picture_items:
+            if picture_item.image is None:
+                # When picture item is not rendered, exit immediately.
+                picture_item_found = True
+                break
+            else:
+                if picture_item.image.uri == current_picture_item.image.uri:
+                    picture_item_found = True
+                    break
+
+        return picture_item_found
+
+    def _section_header_item_existed(self, current_section_header_item: SectionHeaderItem, section_header_items: list[SectionHeaderItem]):
+        section_header_item_found = False
+
+        for section_header_item in section_header_items:
+            if section_header_item.text == current_section_header_item.text and self._is_same_location(current_section_header_item, section_header_item):
+                section_header_item_found = True
+                break
+
+        return section_header_item_found
+
+    def _text_item_existed(self, current_text_item: TextItem, text_items: list[TextItem]):
+        text_item_found = False
+
+        for text_item in text_items:
+            if text_item.text == current_text_item.text and self._is_same_location(current_text_item, text_item):
+                text_item_found = True
+                break
+
+        return text_item_found
+
+    def _get_duplicated_items(self, dl_doc):
+        picture_items: list[PictureItem] = []
+        section_header_items: list[SectionHeaderItem] = []
+        text_items: list[TextItem] = []
+        for item, level in dl_doc.iterate_items():
+            if isinstance(item, PictureItem):
+                if self._picture_item_existed(current_picture_item=item, picture_items=picture_items):
+                    yield item
+                else:
+                    picture_items.append(item)
+
+            if isinstance(item, SectionHeaderItem):
+                if self._section_header_item_existed(current_section_header_item=item, section_header_items=section_header_items):
+                    yield item
+                else:
+                    section_header_items.append(item)
+
+            if isinstance(item, TextItem):
+                if self._text_item_existed(current_text_item=item, text_items=text_items):
+                    yield item
+                else:
+                    text_items.append(item)
+
+    def _cleanup_list(self, text):
+        return text.replace("● ", "").replace(" ", "")
+
+    def _cleanup_text(self, text):
+        return text.replace(u"\u200b", u"").replace(u"\t", u"").replace("\xa0", " ")
+
+    def _cleaned_item(self, item):
+        if not hasattr(item, 'text'): return item
+
+        if isinstance(
+            item, ListItem
+        ) or (  # TODO remove when all captured as ListItem:
+            isinstance(item, TextItem)
+            and item.label == DocItemLabel.LIST_ITEM
+        ):
+            item.text = self._cleanup_list(item.text)
+        else:
+            item.text = self._cleanup_text(item.text)
+
+        return item
