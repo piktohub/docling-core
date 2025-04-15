@@ -958,6 +958,7 @@ class ListItem(TextItem):
     )
     enumerated: bool = False
     marker: str = "-"  # The bullet or number symbol that prefixes this list item
+    ilevel: int = 0
 
 
 class FloatingItem(DocItem):
@@ -2100,6 +2101,7 @@ class DoclingDocument(BaseModel):
         content_layer: Optional[ContentLayer] = None,
         formatting: Optional[Formatting] = None,
         hyperlink: Optional[Union[AnyUrl, Path]] = None,
+        ilevel: int = 0,
     ):
         """add_list_item.
 
@@ -2108,6 +2110,7 @@ class DoclingDocument(BaseModel):
         :param orig: Optional[str]:  (Default value = None)
         :param prov: Optional[ProvenanceItem]:  (Default value = None)
         :param parent: Optional[NodeItem]:  (Default value = None)
+        :param ilevel: Optional[int]:  (Default value = 0)
 
         """
         if not parent:
@@ -2115,6 +2118,9 @@ class DoclingDocument(BaseModel):
 
         if not orig:
             orig = text
+
+        if not ilevel:
+            ilevel = 0
 
         marker = marker or "-"
 
@@ -2129,6 +2135,7 @@ class DoclingDocument(BaseModel):
             marker=marker,
             formatting=formatting,
             hyperlink=hyperlink,
+            ilevel=ilevel,
         )
         if prov:
             list_item.prov.append(prov)
